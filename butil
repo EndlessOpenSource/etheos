@@ -1,0 +1,146 @@
+#!/usr/bin/env python
+
+import argparse
+import collections
+import os
+import shutil
+import subprocess
+
+
+def display_settings(args):
+    print('\n' + get_divider('BUILD SETTINGS'))
+    settings_dict = collections.OrderedDict([
+        ('Build mode', args.debug),
+        ('Build directory', args.build_dir),
+        ('Install directory', args.install_dir),
+        ('SQL Server support', args.sqlserver),
+        ('MariaDB support', args.maria),
+        ('SQLite support', args.sqlite),
+    ])
+    for k, v in settings_dict.items():
+        print('{setting}: {value}'.format(setting=k, value=v))
+    print(get_divider())
+
+
+def get_divider(text=''):
+    left, rem = divmod((80 - len(text)), 2)
+    return '{left}{text}{right}'.format(
+        left=('-'*left), text=text, right=('-'*(left+rem)))
+
+
+def clean_artifacts(artifacts_dir):
+    if os.path.exists(artifacts_dir):
+        shutil.rmtree(artifacts_dir)
+
+
+class CommandGenerator(object):
+
+    def __init__(self, args, repo_dir):
+        self._args = args
+        self._repo_dir = repo_dir
+
+    def get_cmake_generate_cmd(self):
+        # Windows: cmake -DEOSERV_WANT_SQLSERVER=ON \
+        # -DEOSERV_USE_PRECOMPILED_HEADERS=OFF -G "Visual Studio 15 2017" ..
+        macros_dict = collections.OrderedDict([
+            ('CMAKE_BUILD_TYPE', self._args.debug),
+            ('EOSERV_WANT_SQLSERVER', self._args.sqlserver),
+            ('EOSERV_WANT_MYSQL', self._args.maria),
+            ('EOSERV_WANT_SQLITE', self._args.sqlite)
+        ])
+        macros_str = ' '.join(
+            ['-D{macro}={value}'.format(macro=k, value=v)
+                for k, v in macros_dict.items()]
+        )
+        gen_cmd = 'cmake {macro_str} -G"Unix Makefiles" {repo_dir}'.format(
+            macro_str=macros_str, repo_dir=self._repo_dir)
+        return gen_cmd
+
+    def get_cmake_build_cmd(self):
+        # Windows: cmake --build . --config $buildMode --target INSTALL --
+        bld_cmd = 'cmake --build {build_dir} --target install'.format(
+            build_dir=self._args.build_dir)
+        return bld_cmd
+
+    def get_test_cmd(self):
+        # Windows: ./install/test/eoserv_test.exe
+        tst_cmd = os.path.join(self._args.install_dir, 'test', 'eoserv_test')
+        return tst_cmd
+
+
+def invoke_cmd(cmd):
+    print(cmd)
+    subprocess.call(cmd, shell=True)
+
+
+def invoke_cmake_generate(generator):
+    print('\n' + get_divider('CMAKE GENERATE'))
+    invoke_cmd(generator.get_cmake_generate_cmd())
+    print(get_divider())
+
+
+def invoke_cmake_build(generator):
+    print('\n' + get_divider('CMAKE BUILD AND INSTALL'))
+    invoke_cmd(generator.get_cmake_build_cmd())
+    print(get_divider())
+
+
+def invoke_test_runner(args):
+    print('\n' + get_divider('TESTING'))
+    invoke_cmd(generator.get_test_cmd())
+    print(get_divider())
+
+
+def main():
+    # Parse the command line arguments.
+    parser = argparse.ArgumentParser(description='Etheos build utility.')
+    parser.add_argument(
+        '-d', '--debug', help='Build with debug symbols.',
+        action='store_const', default='Release', const='Debug')
+    parser.add_argument(
+        '-c', '--clean', help='Remove existing build and install.',
+        action='store_true')
+    parser.add_argument(
+        '-t', '--test', help='Execute tests.', action='store_true')
+    parser.add_argument(
+        '-b', '--build_dir', default='build', type=os.path.abspath,
+        help='Build directory (default: %(default)s)')
+    parser.add_argument(
+        '-i', '--install_dir', default='install', type=os.path.abspath,
+        help=argparse.SUPPRESS)
+    parser.add_argument(
+        '--sqlserver', choices=['ON', 'OFF'], default='ON', type=str.upper,
+        help='SQL Server support (default: %(default)s)')
+    parser.add_argument(
+        '--maria', choices=['ON', 'OFF'], default='OFF', type=str.upper,
+        help='MariaDB/MySQL support (default: %(default)s)')
+    parser.add_argument(
+        '--sqlite', choices=['ON', 'OFF'], default='OFF', type=str.upper,
+        help='SQLite support (default: %(default)s)')
+    args = parser.parse_args()
+    # Display the resulting build settings.
+    display_settings(args)
+    try:
+        # If requested, clean the artifact directories before building.
+        if args.clean:
+            clean_artifacts(args.build_dir)
+            clean_artifacts(args.install_dir)
+        # Create and enter the build directory.
+        repo_dir = os.path.dirname(os.path.abspath(__file__))
+        if not os.path.exists(args.build_dir):
+            os.mkdir(args.build_dir)
+        os.chdir(args.build_dir)
+        # Invoke the necessary CMake commands.
+        generator = CommandGenerator(args, repo_dir)
+        invoke_cmake_generate(generator)
+        invoke_cmake_build(generator)
+        # If requested, invoke the test runner.
+        if args.test:
+            invoke_test_runner(generator)
+    except Exception as ex:
+        print(ex)
+
+
+if __name__ == '__main__':
+    main()
+
