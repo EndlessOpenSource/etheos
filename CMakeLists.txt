@@ -229,7 +229,7 @@ if(WIN32)
 	list(APPEND eoserv_LIBRARIES winmm ws2_32)
 
 	if (EOSERV_WANT_MYSQL)
-		list(APPEND eoserv_LIBRARIES shlwapi)
+		list(APPEND eoserv_LIBRARIES shlwapi crypt32 secur32)
 	endif()
 else()
 	list(APPEND eoserv_LIBRARIES pthread)
