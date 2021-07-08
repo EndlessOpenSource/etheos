@@ -11,3 +11,6 @@ insert_final_newline = true
 # Override Defaults
 [*.sh]
 indent_size = 2
+
+[*.{c,h,cpp,hpp}]
+indent_style = tab
